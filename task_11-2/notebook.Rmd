@@ -1,0 +1,102 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(readr)
+library(zoo)
+library(tseries)
+library(TSA)
+```
+
+Загружаем данные:
+```{r}
+data <- read_delim("SBER_140101_140401.csv", 
+";", escape_double = FALSE, col_types = cols(`<DATE>` = col_date(format = "%Y%m%d"), 
+`<PER>` = col_skip(), `<TICKER>` = col_skip(), 
+`<TIME>` = col_skip()), trim_ws = TRUE)
+
+zoo_data = read.zoo(data)
+plot(zoo_data, col='blue', lwd=2)
+```
+
+```{r}
+zoo_data_diff = log(zoo_data) / lag(log(zoo_data), -1, na.pad=TRUE)
+zoo_data_diff = na.omit(zoo_data_diff)
+
+plot(zoo_data_diff)
+```
+
+
+```{r}
+USED_COL = '<HIGH>'
+
+Intervention.Time = as.Date("2014-03-03")
+
+plot(zoo_data_diff[,USED_COL], col='blue', lwd=2)
+abline(v = Intervention.Time,col = "red",lwd = 3)
+```
+
+```{r}
+wnd = window(zoo_data_diff, end=Intervention.Time)
+plot(wnd[,USED_COL], col='blue', lwd=2)
+```
+```{r}
+dwnd = diff(wnd)
+plot(dwnd[,USED_COL])
+```
+```{r}
+pacf(na.remove(as.ts(zoo_data_diff[,USED_COL])), lwd=4, lag.max=nrow(wnd))
+```
+
+```{r}
+acf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
+```
+```{r}
+pacf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
+```
+```{r}
+Inter=(data$`<DATE>` >= Intervention.Time) * 1
+xreg = data.frame(Inter)
+xreg
+```
+
+```{r}
+a = as.ts(na.remove(as.ts(zoo_data_diff[,USED_COL])))
+a
+```
+
+```{r}
+  Inter[-1]
+```
+
+```{r}
+data.arima = arimax(
+  na.remove(as.ts(zoo_data_diff[,USED_COL])),
+  order=c(1,1,0),
+  method='ML',
+  xtransf=data.frame(Inter[-1]),
+  transfer=list(c(0,1))
+)
+
+data.arima
+```
+
+
+
+```{r}
+plot(zoo_data_diff[,USED_COL], col='blue', lwd=2)
+lines(fitted(data.arima),col= "red",lwd =2)
+```
+```{r}
+plot(fitted(data.arima)[-1])
+```
+
+```{r}
+length(zoo_data_diff[,USED_COL])
+```
