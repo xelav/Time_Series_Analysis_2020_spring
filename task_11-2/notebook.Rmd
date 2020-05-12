@@ -61,42 +61,87 @@ acf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
 pacf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
 ```
 ```{r}
-Inter=(data$`<DATE>` >= Intervention.Time) * 1
+Inter= 1 * (index(zoo_data_diff[,USED_COL]) == Intervention.Time)
 xreg = data.frame(Inter)
 xreg
 ```
-
 ```{r}
-a = as.ts(na.remove(as.ts(zoo_data_diff[,USED_COL])))
-a
+1 * (index(zoo_data_diff[,USED_COL]) == Intervention.Time)
 ```
 
 ```{r}
-  Inter[-1]
+time(zoo_data_diff[,USED_COL]) == time(Intervention.Time)
 ```
+
 
 ```{r}
 data.arima = arimax(
   na.remove(as.ts(zoo_data_diff[,USED_COL])),
   order=c(1,1,0),
   method='ML',
-  xtransf=data.frame(Inter[-1]),
-  transfer=list(c(0,1))
+  xtransf=data.frame(Inter, Inter),
+  transfer=list(c(0,0), c(2,0))
 )
 
 data.arima
 ```
 
-
-
 ```{r}
-plot(zoo_data_diff[,USED_COL], col='blue', lwd=2)
-lines(fitted(data.arima),col= "red",lwd =2)
-```
-```{r}
-plot(fitted(data.arima)[-1])
+plot(as.numeric(zoo_data_diff[,USED_COL]), col='blue', lwd=2, type='o')
+lines(as.numeric(na.remove(fitted(data.arima)[-1])),col= "red",lwd =2, type='p')
+# abline(v = Intervention.Time,col = "red",lwd = 3)
+# abline(v = 40,col = "red",lwd = 3)
 ```
 
 ```{r}
-length(zoo_data_diff[,USED_COL])
+u00 = data.arima$coef["Inter-MA0"]
+u10 = data.arima$coef["Inter.1-MA0"]
+r11 = data.arima$coef["Inter.1-AR1"]
+r12 = data.arima$coef["Inter.1-AR2"]
+data.arima$coef
+```
+
+```{r}
+filter(Inter,filter)
+```
+
+```{r}
+inter_feed = Inter*u00 + filter(Inter, filter=c(r11, r12), method='recursive', side=1)*u10
+plot(inter_feed, type='h', col='blue', lwd=2)
+abline(h=0)
+```
+```{r}
+data.inter_removed = as.numeric(zoo_data_diff[,USED_COL]) - inter_feed
+plot(data.inter_removed, col='blue', lwd=2)
+```
+
+
+```{r}
+acf(data.inter_removed, lwd=4, lag.max=length(data.inter_removed))
+```
+
+```{r}
+pacf(data.inter_removed, lwd=4, lag.max=length(data.inter_removed))
+```
+
+```{r}
+data.arima2 = arimax(
+  data.inter_removed,
+  order=c(1,0,1),
+  method='ML'
+)
+
+plot(as.numeric(data.inter_removed), col='blue', lwd=2, type='o')
+lines(as.numeric(na.remove(fitted(data.arima2))),col= "red",lwd =2, type='p')
+# abline(v = Intervention.Time,col = "red",lwd = 3)
+abline(v = 40,col = "red",lwd = 3)
+```
+
+```{r}
+plot(data.arima2$residuals, col='blue', lwd=2)
+```
+
+```{r}
+qqnorm(data.arima2$residuals)
+qqline(data.arima2$residuals)
 ```
