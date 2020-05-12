@@ -1,11 +1,15 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "11-2 Alexandrov"
+output:
+  html_document:
+    df_print: paged
+  html_notebook: default
+  pdf_document: default
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+*Задание 11, вариант 2*
+Данные: Дневные [акции сбербанка](https://www.finam.ru/profile/moex-akcii/sberbank/export/) с начала 2014 года до апреля 2014 года. Время интервенции берем за 3 марта 2014.
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
 ```{r}
 library(readr)
@@ -15,68 +19,65 @@ library(TSA)
 ```
 
 Загружаем данные:
+
 ```{r}
 data <- read_delim("SBER_140101_140401.csv", 
 ";", escape_double = FALSE, col_types = cols(`<DATE>` = col_date(format = "%Y%m%d"), 
 `<PER>` = col_skip(), `<TICKER>` = col_skip(), 
 `<TIME>` = col_skip()), trim_ws = TRUE)
 
-zoo_data = read.zoo(data)
-plot(zoo_data, col='blue', lwd=2)
+data.zoo = read.zoo(data)
+plot(data.zoo, col='blue', lwd=2)
 ```
+
+Переходим к ряду $r_t = \frac{\ln{S_t}}{\ln{S_{t-1}}}$
 
 ```{r}
-zoo_data_diff = log(zoo_data) / lag(log(zoo_data), -1, na.pad=TRUE)
-zoo_data_diff = na.omit(zoo_data_diff)
+data.zoo.diff = log(data.zoo) / lag(log(data.zoo), -1, na.pad=TRUE)
+data.zoo.diff = na.omit(data.zoo.diff)
 
-plot(zoo_data_diff)
+plot(data.zoo.diff, col='blue', lwd=2)
 ```
 
+Как видно, ряды четырех параметров дневных свечей <LOW>, <HIGH>, <OPEN> и <CLOSE> достаточно похожи между собой. Возьмем из них <HIGH> и отметим интервенцию.
 
 ```{r}
 USED_COL = '<HIGH>'
 
-Intervention.Time = as.Date("2014-03-03")
+Inter.Time = as.Date("2014-03-03")
 
-plot(zoo_data_diff[,USED_COL], col='blue', lwd=2)
-abline(v = Intervention.Time,col = "red",lwd = 3)
-```
-
-```{r}
-wnd = window(zoo_data_diff, end=Intervention.Time)
-plot(wnd[,USED_COL], col='blue', lwd=2)
-```
-```{r}
-dwnd = diff(wnd)
-plot(dwnd[,USED_COL])
-```
-```{r}
-pacf(na.remove(as.ts(zoo_data_diff[,USED_COL])), lwd=4, lag.max=nrow(wnd))
+plot(data.zoo.diff[,USED_COL], col='blue', lwd=2)
+abline(v = Inter.Time,col = "red",lwd = 3)
 ```
 
+Рассмотрим отрезок ряда до интервенции
+
 ```{r}
-acf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
+data.zoo.wnd = window(data.zoo.diff, end=Inter.Time)
+plot(data.zoo.wnd[,USED_COL], col='blue', lwd=2)
+```
+
+Дифференцируем ряд и рассмотрим ACF и PACF
+
+```{r}
+data.zoo.wnd.diff = diff(data.zoo.wnd)
+plot(data.zoo.wnd.diff[,USED_COL], col='blue', lwd=2)
 ```
 ```{r}
-pacf(na.remove(as.ts(dwnd[,USED_COL])), lwd=4, lag.max=nrow(wnd))
-```
-```{r}
-Inter= 1 * (index(zoo_data_diff[,USED_COL]) == Intervention.Time)
-xreg = data.frame(Inter)
-xreg
-```
-```{r}
-1 * (index(zoo_data_diff[,USED_COL]) == Intervention.Time)
+pacf(na.remove(as.ts(data.zoo.diff[,USED_COL])), lwd=4, lag.max=nrow(data.zoo.wnd))
 ```
 
 ```{r}
-time(zoo_data_diff[,USED_COL]) == time(Intervention.Time)
+acf(na.remove(as.ts(data.zoo.wnd.diff[,USED_COL])), lwd=4, lag.max=nrow(data.zoo.wnd))
 ```
 
+Смоделриуем ARIMA(1,1,0) с моделью интервенции вида $m_t = \omega_0I_t(T)+\frac{\omega_1}{1-\omega_2B-\omega_3B^2}I_t(T)$
 
 ```{r}
+Inter= 1 * (index(data.zoo.diff[,USED_COL]) == Inter.Time)
+
 data.arima = arimax(
-  na.remove(as.ts(zoo_data_diff[,USED_COL])),
+  na.remove(as.ts(data.zoo.diff[,USED_COL])),
   order=c(1,1,0),
   method='ML',
   xtransf=data.frame(Inter, Inter),
@@ -87,11 +88,16 @@ data.arima
 ```
 
 ```{r}
-plot(as.numeric(zoo_data_diff[,USED_COL]), col='blue', lwd=2, type='o')
+
+Inter.Index = min(which(index(data.zoo.diff[,USED_COL]) >= Inter.Time))
+
+plot(as.numeric(data.zoo.diff[,USED_COL]), col='blue', lwd=2, type='o', main='Model with intervention')
 lines(as.numeric(na.remove(fitted(data.arima)[-1])),col= "red",lwd =2, type='p')
-# abline(v = Intervention.Time,col = "red",lwd = 3)
-# abline(v = 40,col = "red",lwd = 3)
+
+abline(v = Inter.Index,col = "red",lwd = 3)
 ```
+
+Эффект интервенции:
 
 ```{r}
 u00 = data.arima$coef["Inter-MA0"]
@@ -102,19 +108,22 @@ data.arima$coef
 ```
 
 ```{r}
-filter(Inter,filter)
-```
-
-```{r}
-inter_feed = Inter*u00 + filter(Inter, filter=c(r11, r12), method='recursive', side=1)*u10
-plot(inter_feed, type='h', col='blue', lwd=2)
+Inter.feed = Inter*u00 + filter(Inter, filter=c(r11, r12), method='recursive', side=1)*u10
+plot(Inter.feed, type='h', col='blue', lwd=2, main='Intervention Model')
 abline(h=0)
 ```
-```{r}
-data.inter_removed = as.numeric(zoo_data_diff[,USED_COL]) - inter_feed
-plot(data.inter_removed, col='blue', lwd=2)
-```
 
+Уберем эффект интервенции
+
+```{r}
+data.inter_removed = as.numeric(data.zoo.diff[,USED_COL]) - Inter.feed
+plot(data.inter_removed, col='blue', lwd=2, main='Intervention residuals')
+abline(v = Inter.Index,col = "red",lwd = 3)
+```
+Как видно, эффект интервенции все ещё остался в остаточном ряду.
+
+
+Построим ACF и PACА остатков интервенции
 
 ```{r}
 acf(data.inter_removed, lwd=4, lag.max=length(data.inter_removed))
@@ -124,6 +133,8 @@ acf(data.inter_removed, lwd=4, lag.max=length(data.inter_removed))
 pacf(data.inter_removed, lwd=4, lag.max=length(data.inter_removed))
 ```
 
+Построим модель ARIMA(1,0,0)
+
 ```{r}
 data.arima2 = arimax(
   data.inter_removed,
@@ -131,17 +142,21 @@ data.arima2 = arimax(
   method='ML'
 )
 
-plot(as.numeric(data.inter_removed), col='blue', lwd=2, type='o')
+plot(as.numeric(data.inter_removed), col='blue', lwd=2, type='o', main="Model without intervention")
 lines(as.numeric(na.remove(fitted(data.arima2))),col= "red",lwd =2, type='p')
-# abline(v = Intervention.Time,col = "red",lwd = 3)
-abline(v = 40,col = "red",lwd = 3)
+abline(v = Inter.Index,col = "red",lwd = 3)
 ```
 
+Остатки модели
+
 ```{r}
-plot(data.arima2$residuals, col='blue', lwd=2)
+plot(data.arima2$residuals, col='blue', lwd=2, main="Model residiuals without intervention")
+abline(v = Inter.Index,col = "red",lwd = 3)
 ```
 
 ```{r}
 qqnorm(data.arima2$residuals)
 qqline(data.arima2$residuals)
 ```
+
+Остатки модели явно не стационарные.
